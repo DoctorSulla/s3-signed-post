@@ -16,12 +16,14 @@ const EXAMPLE_POLICY: &str = r#"{ "expiration": "2015-12-30T12:00:00.000Z",
 }"#;
 
 use super::*;
+use jiff::{Timestamp, ToSpan, Unit};
+use serde_json::json;
 
 #[test]
 fn test_signing() {
 
 
-    let signing_context =  SigningContext { region: "us-east-1".to_string(), date: "20151229".to_string(), service: "s3".to_string(), access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string() };
+    let signing_context =  SigningContext { region: Region::UsEast1, date: "20151229".to_string(), service: Service::S3, access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string() };
 
     let signing_key = derive_signing_key(&signing_context);
 
@@ -47,7 +49,7 @@ fn test_policy_generation() {
         .unwrap();
 
 
-    let signing_context =  SigningContext { region: "us-east-1".to_string(), date: "20261010".to_string(), service: "s3".to_string(), access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
+    let signing_context =  SigningContext { region: Region::UsEast1, date: "20261010".to_string(), service: Service::S3, access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
 
     let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
         .bucket("sample-bucket")
@@ -73,7 +75,7 @@ fn test_starts_with_and_custom_conditions() {
         .checked_add(300.minutes())
         .unwrap();
 
-    let signing_context =  SigningContext { region: "us-east-1".to_string(), date: "20261010".to_string(), service: "s3".to_string(), access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
+    let signing_context =  SigningContext { region: Region::UsEast1, date: "20261010".to_string(), service: Service::S3, access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
 
 
     let policy = Policy::new_with_exact_expiration(expiration, &signing_context)

@@ -1,0 +1,13 @@
+[package]
+name = "s3-signed-post"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.23.1"
+hex = "0.4.3"
+hmac = "0.13.0"
+jiff = { version = "0.2.41", features = ["serde"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"

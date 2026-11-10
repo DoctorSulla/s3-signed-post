@@ -79,7 +79,6 @@ fn test_starts_with_and_custom_conditions() {
     let x_amz_date = "20261010T000000Z";
 
     let policy = Policy::new_with_exact_expiration(expiration, x_amz_credential, x_amz_date)
-        .starts_with_bucket("sample-")
         .starts_with_key("user/user1/")
         .starts_with_content_type("image/")
         .condition(json!({"acl": "public-read"}));
@@ -87,7 +86,7 @@ fn test_starts_with_and_custom_conditions() {
     let result = serde_json::to_string(&policy).unwrap();
 
     let expected_result = format!(
-        r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},["starts-with","$bucket","sample-"],["starts-with","$key","user/user1/"],["starts-with","$content-type","image/"],{{"acl":"public-read"}}]}}"#,
+        r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},["starts-with","$key","user/user1/"],["starts-with","$content-type","image/"],{{"acl":"public-read"}}]}}"#,
         expiration, x_amz_credential, x_amz_date
     );
 

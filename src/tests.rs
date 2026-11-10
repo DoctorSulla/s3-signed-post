@@ -19,12 +19,11 @@ use super::*;
 
 #[test]
 fn test_signing() {
-    let signing_key = derive_signing_key(
-        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        "20151229",
-        "us-east-1",
-        "s3",
-    );
+
+
+    let signing_context =  SigningContext { region: "us-east-1".to_string(), date: "20151229".to_string(), service: "s3".to_string(), access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string() };
+
+    let signing_key = derive_signing_key(&signing_context);
 
     let signed_policy = get_policy_signature(&EXAMPLE_POLICY.replace("\n", "\r\n"), &signing_key);
 
@@ -47,11 +46,10 @@ fn test_policy_generation() {
         .checked_add(300.minutes())
         .unwrap();
 
-    let x_amz_credential = "AKIAIOSFODNN7EXAMPLE/20151229/us-east-1/s3/aws4_request";
 
-    let x_amz_date = "20261010T000000Z";
+    let signing_context =  SigningContext { region: "us-east-1".to_string(), date: "20261010".to_string(), service: "s3".to_string(), access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
 
-    let policy = Policy::new_with_exact_expiration(expiration, x_amz_credential, x_amz_date)
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
         .bucket("sample-bucket")
         .content_length_range(1000, 100000);
 
@@ -61,7 +59,7 @@ fn test_policy_generation() {
 
     let expected_result = format!(
         r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},{{"bucket":"sample-bucket"}},["content-length-range",1000,100000]]}}"#,
-        expiration, x_amz_credential, x_amz_date
+        expiration, signing_context.get_credential(), signing_context.get_x_amz_date()
     );
 
     assert_eq!(expected_result, result);
@@ -75,10 +73,10 @@ fn test_starts_with_and_custom_conditions() {
         .checked_add(300.minutes())
         .unwrap();
 
-    let x_amz_credential = "AKIAIOSFODNN7EXAMPLE/20151229/us-east-1/s3/aws4_request";
-    let x_amz_date = "20261010T000000Z";
+    let signing_context =  SigningContext { region: "us-east-1".to_string(), date: "20261010".to_string(), service: "s3".to_string(), access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
 
-    let policy = Policy::new_with_exact_expiration(expiration, x_amz_credential, x_amz_date)
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
         .starts_with_key("user/user1/")
         .starts_with_content_type("image/")
         .condition(json!({"acl": "public-read"}));
@@ -87,7 +85,7 @@ fn test_starts_with_and_custom_conditions() {
 
     let expected_result = format!(
         r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},["starts-with","$key","user/user1/"],["starts-with","$content-type","image/"],{{"acl":"public-read"}}]}}"#,
-        expiration, x_amz_credential, x_amz_date
+        expiration, signing_context.get_credential(), signing_context.get_x_amz_date()
     );
 
     assert_eq!(expected_result, result);

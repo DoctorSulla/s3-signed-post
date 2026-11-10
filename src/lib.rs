@@ -16,6 +16,26 @@ pub struct Policy {
     conditions: Vec<Value>,
 }
 
+/// Signing Context is used as a wrapper to hold the various pieces of information used for building
+/// requests. Date should be in YYYYMMDD format
+#[derive(Serialize, Debug, Clone)]
+pub struct SigningContext {
+    region: String,
+    date: String,
+    service: String,
+    access_key: String,
+    secret_access_key: String
+}
+
+impl SigningContext {
+    pub fn get_credential(&self) -> String {
+        format!("{}/{}/{}/{}/{}",self.access_key,self.date,self.region,self.service,AWS4_REQUEST)
+    }
+    pub fn get_x_amz_date(&self) -> String {
+        format!("{}T000000Z",self.date)
+    }
+}
+
 #[derive(Serialize, Debug, Clone)]
 pub struct SignedPolicy {
     pub base64_encoding: String,
@@ -28,10 +48,10 @@ impl Policy {
         get_policy_signature(&policy, signing_key)
     }
 
-    fn get_default_conditions(x_amz_credential: &str, x_amz_date: &str) -> Vec<Value> {
+        fn get_default_conditions(signing_context: &SigningContext) -> Vec<Value> {
         let alg = json!({"x-amz-algorithm":"AWS4-HMAC-SHA256"});
-        let credential = json!({"x-amz-credential": x_amz_credential});
-        let date = json!({"x-amz-date": x_amz_date});
+        let credential = json!({"x-amz-credential": signing_context.get_credential()});
+        let date = json!({"x-amz-date": signing_context.get_x_amz_date()});
 
         vec![credential, alg, date]
     }
@@ -39,8 +59,7 @@ impl Policy {
     /// Create a policy which expire in X minutes
     pub fn new_with_expiration_in_minutes(
         minutes: i64,
-        x_amz_credential: &str,
-        x_amz_date: &str,
+        signing_context: &SigningContext,
     ) -> Self {
         let expiration = Timestamp::now()
             .round(Unit::Millisecond)
@@ -48,7 +67,7 @@ impl Policy {
             .checked_add(minutes.minutes())
             .unwrap();
 
-        let conditions = Policy::get_default_conditions(x_amz_credential, x_amz_date);
+        let conditions = Policy::get_default_conditions(&signing_context);
 
         Self {
             expiration,
@@ -59,10 +78,9 @@ impl Policy {
     /// Create a policy with an exact expiration date
     pub fn new_with_exact_expiration(
         expiration: Timestamp,
-        x_amz_credential: &str,
-        x_amz_date: &str,
+        signing_context: &SigningContext,
     ) -> Self {
-        let conditions = Policy::get_default_conditions(x_amz_credential, x_amz_date);
+        let conditions = Policy::get_default_conditions(&signing_context);
 
         Self {
             expiration,
@@ -122,7 +140,7 @@ impl Policy {
 // Utility function to chain hmac steps
 fn hmac_step(key: &[u8], data: &[u8]) -> [u8; 32] {
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
-    mac.update(data); // <--- Feeds data into the message, not the key
+    mac.update(data);
     mac.finalize().into_bytes().into()
 }
 
@@ -145,25 +163,22 @@ fn hmac_step(key: &[u8], data: &[u8]) -> [u8; 32] {
 //     }
 // }
 
-/// This function derives signing key by taking a secret_access_key, date, region and service. The
+/// This function derives signing key by taking a SigningContext. The
 /// date is in YYYYMMDD format and the region is lower case for more info see https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html
 pub fn derive_signing_key(
-    secret_access_key: &str,
-    date: &str,
-    region: &str,
-    service: &str,
+    signing_context: &SigningContext
 ) -> [u8; 32] {
-    let first_input = format!("{AWS4}{secret_access_key}");
+    let first_input = format!("{}{}",AWS4,signing_context.secret_access_key);
 
-    let date_key = hmac_step(first_input.as_bytes(), date.as_bytes());
-    let date_region_key = hmac_step(&date_key, region.as_bytes());
-    let date_region_service_key = hmac_step(&date_region_key, service.as_bytes());
+    let date_key = hmac_step(first_input.as_bytes(), signing_context.date.as_bytes());
+    let date_region_key = hmac_step(&date_key, signing_context.region.as_bytes());
+    let date_region_service_key = hmac_step(&date_region_key, signing_context.service.as_bytes());
     let final_key = hmac_step(&date_region_service_key, AWS4_REQUEST.as_bytes());
 
     final_key
 }
 
-/// This function generates a signature with a policy and a signing key. The policy can be written
+/// This function generates a signature using a provided policy and signing key. The policy can be written
 /// manually or constructed with the Policy struct
 pub fn get_policy_signature(policy: &str, signing_key: &[u8]) -> SignedPolicy {
     let base64_policy = BASE64_STANDARD.encode(policy);

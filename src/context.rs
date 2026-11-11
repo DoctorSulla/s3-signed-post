@@ -17,6 +17,23 @@ pub struct SigningContext {
 }
 
 impl SigningContext {
+    /// Creates a new signing context. Date should be in YYYYMMDD format
+    pub fn new(
+        region: Region,
+        date: impl Into<String>,
+        service: Service,
+        access_key: impl Into<String>,
+        secret_access_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            region,
+            date: date.into(),
+            service,
+            access_key: access_key.into(),
+            secret_access_key: secret_access_key.into(),
+        }
+    }
+
     pub fn get_credential(&self) -> String {
         format!("{}/{}/{}/{}/{}",self.access_key,self.date,self.region,self.service,AWS4_REQUEST)
     }

@@ -23,7 +23,7 @@ use serde_json::json;
 fn test_signing() {
 
 
-    let signing_context =  SigningContext { region: Region::UsEast1, date: "20151229".to_string(), service: Service::S3, access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string() };
+    let signing_context =  SigningContext::new(Region::UsEast1, "20151229", Service::S3, "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
 
     let signing_key = derive_signing_key(&signing_context);
 
@@ -49,7 +49,7 @@ fn test_policy_generation() {
         .unwrap();
 
 
-    let signing_context =  SigningContext { region: Region::UsEast1, date: "20261010".to_string(), service: Service::S3, access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
+    let signing_context =  SigningContext::new(Region::UsEast1, "20261010", Service::S3, "AKIAIOSFODNN7EXAMPLE", "");
 
     let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
         .bucket("sample-bucket")
@@ -75,7 +75,7 @@ fn test_starts_with_and_custom_conditions() {
         .checked_add(300.minutes())
         .unwrap();
 
-    let signing_context =  SigningContext { region: Region::UsEast1, date: "20261010".to_string(), service: Service::S3, access_key: "AKIAIOSFODNN7EXAMPLE".to_string(), secret_access_key: "".to_string() };
+    let signing_context =  SigningContext::new(Region::UsEast1, "20261010", Service::S3, "AKIAIOSFODNN7EXAMPLE", "");
 
 
     let policy = Policy::new_with_exact_expiration(expiration, &signing_context)

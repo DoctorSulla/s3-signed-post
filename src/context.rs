@@ -36,7 +36,7 @@ impl SigningContext {
     }
 
     pub fn get_credential(&self) -> String {
-        format!("{}/{}/{}/{}/{}",self.access_key,self.date.strftime("%Y%m%d").to_string(),self.region,self.service,AWS4_REQUEST)
+        format!("{}/{}/{}/{}/{}",self.access_key,self.date.strftime("%Y%m%d"),self.region,self.service,AWS4_REQUEST)
     }
     pub fn get_x_amz_date(&self) -> String {
         //format!("{}T000000Z",self.date)

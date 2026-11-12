@@ -54,9 +54,9 @@ pub fn derive_signing_key(
     let date_key = hmac_step(first_input.as_bytes(), signing_context.date.strftime("%Y%m%d").to_string().as_bytes());
     let date_region_key = hmac_step(&date_key, signing_context.region.as_str().as_bytes());
     let date_region_service_key = hmac_step(&date_region_key, signing_context.service.as_str().as_bytes());
-    let final_key = hmac_step(&date_region_service_key, AWS4_REQUEST.as_bytes());
+    
 
-    final_key
+    hmac_step(&date_region_service_key, AWS4_REQUEST.as_bytes())
 }
 
 /// This function generates a signature using a provided policy and signing key. The policy can be written

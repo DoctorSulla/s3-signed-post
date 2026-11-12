@@ -38,7 +38,7 @@ impl Policy {
             .checked_add(minutes.minutes())
             .unwrap();
 
-        let conditions = Policy::get_default_conditions(&signing_context);
+        let conditions = Policy::get_default_conditions(signing_context);
 
         Self {
             expiration,
@@ -51,7 +51,7 @@ impl Policy {
         expiration: Timestamp,
         signing_context: &SigningContext,
     ) -> Self {
-        let conditions = Policy::get_default_conditions(&signing_context);
+        let conditions = Policy::get_default_conditions(signing_context);
 
         Self {
             expiration,

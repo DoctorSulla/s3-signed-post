@@ -17,6 +17,7 @@ macro_rules! string_enum {
         }
 
         impl $name {
+            /// Returns the string form used in credential scopes and signing keys
             pub fn as_str(&self) -> &str {
                 match self {
                     $(Self::$variant => $value,)+

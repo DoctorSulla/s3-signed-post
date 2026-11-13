@@ -9,13 +9,25 @@ use jiff::Timestamp;
 
 /// Signing Context is used as a wrapper to hold the various pieces of information used for building
 /// requests.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SigningContext {
     pub(crate) region: Region,
     pub(crate) date: Timestamp,
     pub(crate) service: Service,
     pub(crate) access_key: String,
     pub(crate) secret_access_key: String,
+}
+
+impl std::fmt::Debug for SigningContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SigningContext")
+            .field("region", &self.region)
+            .field("date", &self.date)
+            .field("service", &self.service)
+            .field("access_key", &self.access_key)
+            .field("secret_access_key", &"**MASKED**")
+            .finish()
+    }
 }
 
 impl Serialize for SigningContext {
@@ -48,6 +60,7 @@ impl SigningContext {
         }
     }
 
+    /// Returns the SigV4 credential scope (e.g. `AKID/20151229/us-east-1/s3/aws4_request`)
     pub fn get_credential(&self) -> String {
         format!(
             "{}/{}/{}/{}/{}",

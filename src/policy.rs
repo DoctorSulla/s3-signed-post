@@ -33,6 +33,7 @@ impl Policy {
         post_fields
     }
 
+    /// Base64-encodes the policy JSON and signs it with the given signing key
     pub fn sign(&self, signing_key: &[u8]) -> SignedPolicy {
         let policy: String = serde_json::to_string(&self).unwrap();
         get_policy_signature(&policy, signing_key)
@@ -55,6 +56,10 @@ impl Policy {
     }
 
     /// Create a policy which expire in X minutes
+    ///
+    /// # Panics
+    ///
+    /// Panics if `minutes` is so large that the expiration falls outside the range of `Timestamp`.
     pub fn new_with_expiration_in_minutes(minutes: i64, signing_context: &SigningContext) -> Self {
         let expiration = Timestamp::now()
             .round(Unit::Millisecond)

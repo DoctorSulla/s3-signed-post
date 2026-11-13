@@ -27,7 +27,7 @@ fn hmac_step(key: &[u8], data: &[u8]) -> [u8; 32] {
 }
 
 /// Derives the SigV4 signing key from a SigningContext. The date is formatted as
-/// YYYYMMDD and the region is lower case. See https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html
+/// YYYYMMDD and the region is lower case. See <https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html>
 pub fn derive_signing_key(signing_context: &SigningContext) -> [u8; 32] {
     let first_input = format!("{}{}", AWS4, signing_context.secret_access_key);
 

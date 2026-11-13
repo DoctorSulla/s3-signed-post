@@ -3,18 +3,40 @@
 use jiff::{Timestamp, ToSpan, Unit};
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 use crate::context::SigningContext;
+use crate::derive_signing_key;
 use crate::signing::{SignedPolicy, get_policy_signature};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct Policy {
     expiration: Timestamp,
     conditions: Vec<Value>,
+    #[serde(skip_serializing)]
+    post_fields: BTreeMap<String,String>
 }
 
+
 impl Policy {
+
+
+    pub fn get_post_fields(&self,signing_context: &SigningContext) -> BTreeMap<String,String> {
+        let mut post_fields = self.post_fields.clone();
+
+        let signed_policy = self.sign(&derive_signing_key(signing_context));
+
+        post_fields.insert("policy".to_string(),signed_policy.base64_encoding);
+        post_fields.insert("x-amz-algorithm".to_string(),"AWS4-HMAC-SHA256".to_string());
+        post_fields.insert("x-amz-credential".to_string(),signing_context.get_credential());
+        post_fields.insert("x-amz-date".to_string(),signing_context.get_x_amz_date());
+        post_fields.insert("x-amz-signature".to_string(),signed_policy.signature);
+
+        post_fields
+    }
+
     pub fn sign(&self, signing_key: &[u8]) -> SignedPolicy {
+        
         let policy: String = serde_json::to_string(&self).unwrap();
         get_policy_signature(&policy, signing_key)
     }
@@ -39,10 +61,12 @@ impl Policy {
             .unwrap();
 
         let conditions = Policy::get_default_conditions(signing_context);
+        let post_fields = BTreeMap::new();
 
         Self {
             expiration,
             conditions,
+            post_fields
         }
     }
 
@@ -53,9 +77,13 @@ impl Policy {
     ) -> Self {
         let conditions = Policy::get_default_conditions(signing_context);
 
+
+        let post_fields = BTreeMap::new();
+
         Self {
             expiration,
             conditions,
+            post_fields
         }
     }
 
@@ -91,6 +119,7 @@ impl Policy {
     pub fn key(mut self, key: &str) -> Self {
         let value = json!({"key":key});
         self.conditions.push(value);
+        self.post_fields.insert("key".to_string(),format!("{key}${{filename}}"));
         self
     }
 
@@ -98,6 +127,7 @@ impl Policy {
     pub fn starts_with_key(mut self, key: &str) -> Self {
         let value = json!(["starts-with", "$key", key]);
         self.conditions.push(value);
+        self.post_fields.insert("key".to_string(),format!("{key}${{filename}}"));
         self
     }
 

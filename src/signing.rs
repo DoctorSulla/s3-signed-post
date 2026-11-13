@@ -10,6 +10,7 @@ use crate::context::SigningContext;
 type HmacSha256 = Hmac<Sha256>;
 
 pub(crate) const AWS4_REQUEST: &str = "aws4_request";
+pub(crate) const AWS4_HMAC_SHA256: &str = "AWS4-HMAC-SHA256";
 const AWS4: &str = "AWS4";
 
 #[derive(Serialize, Debug, Clone)]
@@ -25,41 +26,19 @@ fn hmac_step(key: &[u8], data: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
-// enum Method {
-//     POST,
-//     PUT,
-//     DELETE,
-//     PATCH,
-// }
-//
-// impl From<Method> for String {
-//     fn from(value: Method) -> Self {
-//         match value {
-//             Method::POST => "POST",
-//             Method::PUT => "PUT",
-//             Method::DELETE => "DELETE",
-//             Method::PATCH => "PATCH",
-//         }
-//         .to_string()
-//     }
-// }
-
-/// This function derives signing key by taking a SigningContext. The
-/// date is in YYYYMMDD format and the region is lower case for more info see https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html
-pub fn derive_signing_key(
-    signing_context: &SigningContext
-) -> [u8; 32] {
-    let first_input = format!("{}{}",AWS4,signing_context.secret_access_key);
+/// Derives the SigV4 signing key from a SigningContext. The date is formatted as
+/// YYYYMMDD and the region is lower case. See https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html
+pub fn derive_signing_key(signing_context: &SigningContext) -> [u8; 32] {
+    let first_input = format!("{}{}", AWS4, signing_context.secret_access_key);
 
     let date_key = hmac_step(first_input.as_bytes(), signing_context.date.strftime("%Y%m%d").to_string().as_bytes());
     let date_region_key = hmac_step(&date_key, signing_context.region.as_str().as_bytes());
     let date_region_service_key = hmac_step(&date_region_key, signing_context.service.as_str().as_bytes());
-    
 
     hmac_step(&date_region_service_key, AWS4_REQUEST.as_bytes())
 }
 
-/// This function generates a signature using a provided policy and signing key. The policy can be written
+/// Generates a signature for a policy using the provided signing key. The policy can be written
 /// manually or constructed with the Policy struct
 pub fn get_policy_signature(policy: &str, signing_key: &[u8]) -> SignedPolicy {
     let base64_policy = BASE64_STANDARD.encode(policy);

@@ -68,6 +68,46 @@ fn test_policy_generation() {
 }
 
 #[test]
+fn test_x_amz_date_format() {
+    let signing_context = SigningContext::new(Region::UsEast1, "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(), Service::S3, "AKIAIOSFODNN7EXAMPLE", "");
+
+    assert_eq!(signing_context.get_x_amz_date(), "20151229T000000Z");
+}
+
+#[test]
+fn test_signing_context_masks_secret() {
+    let signing_context = SigningContext::new(Region::UsEast1, "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(), Service::S3, "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+
+    let result = serde_json::to_string(&signing_context).unwrap();
+
+    assert!(result.contains(r#""secret_access_key":"**MASKED**""#));
+    assert!(!result.contains("wJalrXUtnFEMI"));
+}
+
+#[test]
+fn test_get_post_fields() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+
+    let signing_context = SigningContext::new(Region::UsEast1, "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(), Service::S3, "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .bucket("sample-bucket")
+        .starts_with_key("user/user1/");
+
+    let fields = policy.get_post_fields(&signing_context);
+
+    let signed = policy.sign(&derive_signing_key(&signing_context));
+
+    assert_eq!(fields.get("key").map(String::as_str), Some("user/user1/${filename}"));
+    assert_eq!(fields.get("policy"), Some(&signed.base64_encoding));
+    assert_eq!(fields.get("x-amz-signature"), Some(&signed.signature));
+    assert_eq!(fields.get("x-amz-algorithm").map(String::as_str), Some("AWS4-HMAC-SHA256"));
+    assert_eq!(fields.get("x-amz-credential"), Some(&signing_context.get_credential()));
+    assert_eq!(fields.get("x-amz-date").map(String::as_str), Some("20151229T000000Z"));
+    assert!(!fields.contains_key("file"));
+}
+
+#[test]
 fn test_starts_with_and_custom_conditions() {
     let expiration = Timestamp::now()
         .round(Unit::Millisecond)

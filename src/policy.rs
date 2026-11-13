@@ -66,7 +66,10 @@ impl Policy {
     }
 
     /// Create a policy with an exact expiration date
-    pub fn new_with_exact_expiration(expiration: Timestamp, signing_context: &SigningContext) -> Self {
+    pub fn new_with_exact_expiration(
+        expiration: Timestamp,
+        signing_context: &SigningContext,
+    ) -> Self {
         Self {
             expiration,
             conditions: Policy::get_default_conditions(signing_context),
@@ -82,7 +85,8 @@ impl Policy {
 
     /// Specifies the content length range in bytes e.g. 1048576 for a mb
     pub fn content_length_range(mut self, lower: usize, upper: usize) -> Self {
-        self.conditions.push(json!(["content-length-range", lower, upper]));
+        self.conditions
+            .push(json!(["content-length-range", lower, upper]));
         self
     }
 

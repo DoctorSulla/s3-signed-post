@@ -435,7 +435,10 @@ fn test_get_s3_upload_url() {
     let signing_context = temporary_credentials_context();
 
     let policy_without_bucket = Policy::new_with_exact_expiration(expiration, &signing_context);
-    assert_eq!(policy_without_bucket.get_s3_upload_url(&signing_context), None);
+    assert_eq!(
+        policy_without_bucket.get_s3_upload_url(&signing_context),
+        None
+    );
 
     let policy_with_bucket = policy_without_bucket.bucket("sample-bucket");
     assert_eq!(

@@ -11,7 +11,10 @@ macro_rules! string_enum {
         $(#[$meta])*
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         pub enum $name {
-            $($variant,)+
+            $(
+                #[doc = concat!("`", $value, "`")]
+                $variant,
+            )+
             /// Any value not covered by the predefined variants.
             Custom(String),
         }

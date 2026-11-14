@@ -132,7 +132,7 @@ impl Policy {
         fields
     }
 
-    /// Create a policy which expire in X minutes
+    /// Creates a policy that expires in `minutes` minutes.
     ///
     /// # Panics
     ///
@@ -169,7 +169,7 @@ impl Policy {
         self
     }
 
-    /// Specifies the content length range in bytes e.g. 1048576 for a mb. Replaces any
+    /// Specifies the content length range in bytes (e.g. `1_048_576` for 1 MiB). Replaces any
     /// previous range.
     pub fn content_length_range(mut self, lower: usize, upper: usize) -> Self {
         self.content_length_range = Some((lower, upper));

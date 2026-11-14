@@ -2,6 +2,13 @@
 name = "s3-signed-post"
 version = "0.1.0"
 edition = "2024"
+description = "A simple library with an ergonomic API for providing direct uploads to S3"
+license = "Apache-2.0"
+repository = "https://github.com/DoctorSulla/s3-signed-post/"
+homepage = "https://github.com/DoctorSulla/s3-signed-post/"
+readme = "README.md"
+keywords = ["s3", "aws", "sigv4", "upload", "presigned"]
+categories = ["web-programming", "api-bindings"]
 
 [dependencies]
 base64 = "0.23.1"

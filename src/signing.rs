@@ -13,9 +13,12 @@ pub(crate) const AWS4_REQUEST: &str = "aws4_request";
 pub(crate) const AWS4_HMAC_SHA256: &str = "AWS4-HMAC-SHA256";
 const AWS4: &str = "AWS4";
 
+/// A base64-encoded S3 POST policy together with its SigV4 hex signature.
 #[derive(Serialize, Debug, Clone)]
 pub struct SignedPolicy {
+    /// Base64-encoded JSON policy document (`policy` form field).
     pub base64_encoding: String,
+    /// Hex-encoded HMAC-SHA256 signature (`x-amz-signature` form field).
     pub signature: String,
 }
 
@@ -26,8 +29,8 @@ fn hmac_step(key: &[u8], data: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
-/// Derives the SigV4 signing key from a SigningContext. The date is formatted as
-/// YYYYMMDD and the region is lower case. See <https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html>
+/// Derives the SigV4 signing key from a [`SigningContext`]. The date is formatted as
+/// `YYYYMMDD` and the region is lower case. See <https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-post-example.html>.
 pub fn derive_signing_key(signing_context: &SigningContext) -> [u8; 32] {
     let first_input = format!("{}{}", AWS4, signing_context.secret_access_key);
 
@@ -49,7 +52,7 @@ pub fn derive_signing_key(signing_context: &SigningContext) -> [u8; 32] {
 }
 
 /// Generates a signature for a policy using the provided signing key. The policy can be written
-/// manually or constructed with the Policy struct
+/// manually or constructed with the [`Policy`](crate::Policy) struct.
 pub fn get_policy_signature(policy: &str, signing_key: &[u8]) -> SignedPolicy {
     let base64_policy = BASE64_STANDARD.encode(policy);
 

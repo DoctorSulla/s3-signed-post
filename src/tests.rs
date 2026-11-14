@@ -69,7 +69,7 @@ fn test_policy_generation() {
     println!("{result}");
 
     let expected_result = format!(
-        r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},{{"bucket":"sample-bucket"}},["content-length-range",1000,100000]]}}"#,
+        r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},{{"x-amz-server-side-encryption":"AES256"}},{{"bucket":"sample-bucket"}},["content-length-range",1000,100000]]}}"#,
         expiration,
         signing_context.get_credential(),
         signing_context.get_x_amz_date()
@@ -196,7 +196,7 @@ fn test_starts_with_and_custom_conditions() {
     let result = serde_json::to_string(&policy).unwrap();
 
     let expected_result = format!(
-        r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},["starts-with","$key","user/user1/"],["starts-with","$content-type","image/"],{{"acl":"public-read"}}]}}"#,
+        r#"{{"expiration":"{}","conditions":[{{"x-amz-credential":"{}"}},{{"x-amz-algorithm":"AWS4-HMAC-SHA256"}},{{"x-amz-date":"{}"}},{{"x-amz-server-side-encryption":"AES256"}},["starts-with","$key","user/user1/"],["starts-with","$content-type","image/"],{{"acl":"public-read"}}]}}"#,
         expiration,
         signing_context.get_credential(),
         signing_context.get_x_amz_date()
@@ -419,6 +419,7 @@ fn test_conditions_have_fixed_order() {
             json!({"x-amz-credential": signing_context.get_credential()}),
             json!({"x-amz-algorithm": "AWS4-HMAC-SHA256"}),
             json!({"x-amz-date": "20151229T000000Z"}),
+            json!({"x-amz-server-side-encryption": "AES256"}),
             json!({"bucket": "b"}),
             json!({"key": "a.png"}),
             json!({"content-type": "image/png"}),

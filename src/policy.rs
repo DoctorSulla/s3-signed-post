@@ -10,6 +10,8 @@ use crate::context::SigningContext;
 use crate::derive_signing_key;
 use crate::signing::{AWS4_HMAC_SHA256, SignedPolicy, get_policy_signature};
 
+const AES_256: &str = "AES256";
+
 /// How a form field must match a value in the policy
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Match {
@@ -125,6 +127,7 @@ impl Policy {
             ("x-amz-credential", signing_context.get_credential()),
             ("x-amz-algorithm", AWS4_HMAC_SHA256.to_string()),
             ("x-amz-date", signing_context.get_x_amz_date()),
+            ("x-amz-server-side-encryption", AES_256.to_string()),
         ];
         if let Some(token) = &signing_context.session_token {
             fields.push(("x-amz-security-token", token.clone()));

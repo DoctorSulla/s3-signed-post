@@ -16,6 +16,7 @@ pub struct SigningContext {
     pub(crate) service: Service,
     pub(crate) access_key: String,
     pub(crate) secret_access_key: String,
+    pub(crate) session_token: Option<String>,
 }
 
 impl std::fmt::Debug for SigningContext {
@@ -26,18 +27,26 @@ impl std::fmt::Debug for SigningContext {
             .field("service", &self.service)
             .field("access_key", &self.access_key)
             .field("secret_access_key", &"**MASKED**")
+            .field(
+                "session_token",
+                &self.session_token.as_ref().map(|_| "**MASKED**"),
+            )
             .finish()
     }
 }
 
 impl Serialize for SigningContext {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("SigningContext", 5)?;
+        let mut state = serializer.serialize_struct("SigningContext", 6)?;
         state.serialize_field("region", &self.region)?;
         state.serialize_field("date", &self.date)?;
         state.serialize_field("service", &self.service)?;
         state.serialize_field("access_key", &self.access_key)?;
         state.serialize_field("secret_access_key", "**MASKED**")?;
+        state.serialize_field(
+            "session_token",
+            &self.session_token.as_ref().map(|_| "**MASKED**"),
+        )?;
         state.end()
     }
 }
@@ -57,7 +66,16 @@ impl SigningContext {
             service,
             access_key: access_key.into(),
             secret_access_key: secret_access_key.into(),
+            session_token: None,
         }
+    }
+
+    /// Sets the session token for temporary credentials (STS, Lambda, ECS, SSO, ...).
+    /// It is added to both the policy conditions and the form fields as
+    /// `x-amz-security-token`.
+    pub fn with_session_token(mut self, session_token: impl Into<String>) -> Self {
+        self.session_token = Some(session_token.into());
+        self
     }
 
     /// Returns the SigV4 credential scope (e.g. `AKID/20151229/us-east-1/s3/aws4_request`)

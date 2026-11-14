@@ -149,6 +149,30 @@ fn test_get_post_fields() {
 }
 
 #[test]
+fn test_get_post_fields_exact_key() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+
+    let signing_context = SigningContext::new(
+        Region::UsEast1,
+        "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(),
+        Service::S3,
+        "AKIAIOSFODNN7EXAMPLE",
+        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    );
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .bucket("sample-bucket")
+        .key("user/user1/photo.jpg");
+
+    let fields = policy.get_post_fields(&signing_context);
+
+    assert_eq!(
+        fields.get("key").map(String::as_str),
+        Some("user/user1/photo.jpg")
+    );
+}
+
+#[test]
 fn test_starts_with_and_custom_conditions() {
     let expiration = Timestamp::now()
         .round(Unit::Millisecond)
@@ -179,4 +203,227 @@ fn test_starts_with_and_custom_conditions() {
     );
 
     assert_eq!(expected_result, result);
+}
+
+fn temporary_credentials_context() -> SigningContext {
+    SigningContext::new(
+        Region::UsEast1,
+        "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(),
+        Service::S3,
+        "ASIAIOSFODNN7EXAMPLE",
+        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    )
+    .with_session_token("FQoGZXIvYXdzEXAMPLETOKEN")
+}
+
+#[test]
+fn test_session_token_in_conditions_and_fields() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = temporary_credentials_context();
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context);
+
+    let policy_json = serde_json::to_value(&policy).unwrap();
+    assert!(
+        policy_json["conditions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({"x-amz-security-token": "FQoGZXIvYXdzEXAMPLETOKEN"}))
+    );
+
+    let fields = policy.get_post_fields(&signing_context);
+    assert_eq!(
+        fields.get("x-amz-security-token").map(String::as_str),
+        Some("FQoGZXIvYXdzEXAMPLETOKEN")
+    );
+}
+
+#[test]
+fn test_no_session_token_by_default() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = SigningContext::new(
+        Region::UsEast1,
+        "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(),
+        Service::S3,
+        "AKIAIOSFODNN7EXAMPLE",
+        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    );
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context);
+
+    assert!(
+        !serde_json::to_string(&policy)
+            .unwrap()
+            .contains("x-amz-security-token")
+    );
+    assert!(
+        !policy
+            .get_post_fields(&signing_context)
+            .contains_key("x-amz-security-token")
+    );
+}
+
+#[test]
+fn test_session_token_is_masked() {
+    let signing_context = temporary_credentials_context();
+
+    let serialized = serde_json::to_string(&signing_context).unwrap();
+    let debugged = format!("{signing_context:?}");
+
+    for output in [serialized, debugged] {
+        assert!(!output.contains("FQoGZXIvYXdzEXAMPLETOKEN"));
+        assert!(output.contains("**MASKED**"));
+    }
+}
+
+#[test]
+fn test_exact_content_type_sets_field() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = temporary_credentials_context();
+
+    let fields = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .content_type("image/png")
+        .get_post_fields(&signing_context);
+
+    assert_eq!(
+        fields.get("Content-Type").map(String::as_str),
+        Some("image/png")
+    );
+}
+
+#[test]
+fn test_starts_with_content_type_leaves_field_to_client() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = temporary_credentials_context();
+
+    let fields = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .starts_with_content_type("image/")
+        .get_post_fields(&signing_context);
+
+    assert!(!fields.contains_key("Content-Type"));
+}
+
+fn policy_conditions(policy: &Policy) -> Vec<serde_json::Value> {
+    serde_json::to_value(policy).unwrap()["conditions"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn count_conditions_on(conditions: &[serde_json::Value], field: &str) -> usize {
+    let dollar_field = format!("${field}");
+    conditions
+        .iter()
+        .filter(|c| {
+            c.get(field).is_some()
+                || c.get(1).and_then(|v| v.as_str()) == Some(dollar_field.as_str())
+        })
+        .count()
+}
+
+#[test]
+fn test_key_setters_replace_previous_key() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = temporary_credentials_context();
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .starts_with_key("user/user1/")
+        .key("user/user1/photo.jpg");
+
+    let conditions = policy_conditions(&policy);
+    assert_eq!(count_conditions_on(&conditions, "key"), 1);
+    assert!(conditions.contains(&json!({"key": "user/user1/photo.jpg"})));
+    assert_eq!(
+        policy
+            .get_post_fields(&signing_context)
+            .get("key")
+            .map(String::as_str),
+        Some("user/user1/photo.jpg")
+    );
+
+    let policy = policy.starts_with_key("user/user2/");
+    let conditions = policy_conditions(&policy);
+    assert_eq!(count_conditions_on(&conditions, "key"), 1);
+    assert!(conditions.contains(&json!(["starts-with", "$key", "user/user2/"])));
+    assert_eq!(
+        policy
+            .get_post_fields(&signing_context)
+            .get("key")
+            .map(String::as_str),
+        Some("user/user2/${filename}")
+    );
+}
+
+#[test]
+fn test_content_type_setters_replace_previous_content_type() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = temporary_credentials_context();
+
+    // Exact then prefix: the Content-Type form field must be dropped too
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .content_type("image/png")
+        .starts_with_content_type("image/");
+
+    let conditions = policy_conditions(&policy);
+    assert_eq!(count_conditions_on(&conditions, "content-type"), 1);
+    assert!(
+        !policy
+            .get_post_fields(&signing_context)
+            .contains_key("Content-Type")
+    );
+}
+
+#[test]
+fn test_bucket_and_length_range_replace_previous() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = temporary_credentials_context();
+
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .bucket("first")
+        .bucket("second")
+        .content_length_range(1, 10)
+        .content_length_range(5, 50);
+
+    let conditions = policy_conditions(&policy);
+    assert_eq!(count_conditions_on(&conditions, "bucket"), 1);
+    assert!(conditions.contains(&json!({"bucket": "second"})));
+    let ranges: Vec<_> = conditions
+        .iter()
+        .filter(|c| c.get(0).and_then(|v| v.as_str()) == Some("content-length-range"))
+        .collect();
+    assert_eq!(ranges, vec![&json!(["content-length-range", 5, 50])]);
+}
+
+#[test]
+fn test_conditions_have_fixed_order() {
+    let expiration = "2015-12-30T12:00:00Z".parse::<Timestamp>().unwrap();
+    let signing_context = SigningContext::new(
+        Region::UsEast1,
+        "2015-12-29T00:00:00Z".parse::<Timestamp>().unwrap(),
+        Service::S3,
+        "AKIAIOSFODNN7EXAMPLE",
+        "",
+    );
+
+    // Setters called in reverse of the serialized order
+    let policy = Policy::new_with_exact_expiration(expiration, &signing_context)
+        .condition(json!({"acl": "public-read"}))
+        .content_length_range(1, 10)
+        .content_type("image/png")
+        .key("a.png")
+        .bucket("b");
+
+    assert_eq!(
+        policy_conditions(&policy),
+        vec![
+            json!({"x-amz-credential": signing_context.get_credential()}),
+            json!({"x-amz-algorithm": "AWS4-HMAC-SHA256"}),
+            json!({"x-amz-date": "20151229T000000Z"}),
+            json!({"bucket": "b"}),
+            json!({"key": "a.png"}),
+            json!({"content-type": "image/png"}),
+            json!(["content-length-range", 1, 10]),
+            json!({"acl": "public-read"}),
+        ]
+    );
 }

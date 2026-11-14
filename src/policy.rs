@@ -2,6 +2,7 @@
 
 use jiff::{Timestamp, ToSpan, Unit};
 use serde::Serialize;
+use serde::ser::SerializeStruct;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -9,26 +10,76 @@ use crate::context::SigningContext;
 use crate::derive_signing_key;
 use crate::signing::{AWS4_HMAC_SHA256, SignedPolicy, get_policy_signature};
 
-#[derive(Serialize, Debug, Clone)]
+/// How a form field must match a value in the policy
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Match {
+    /// The field must equal the value exactly
+    Exact(String),
+    /// The field must start with the given prefix
+    StartsWith(String),
+}
+
+impl Match {
+    fn to_condition(&self, field: &str) -> Value {
+        match self {
+            Match::Exact(value) => json!({ field: value }),
+            Match::StartsWith(prefix) => json!(["starts-with", format!("${field}"), prefix]),
+        }
+    }
+}
+
+/// A browser-based POST upload policy.
+///
+/// The well-known conditions (bucket, key, content type, content length range) are stored
+/// once each, so calling a setter again replaces the previous value rather than adding a
+/// conflicting condition. Anything else can be added with [`Policy::condition`].
+#[derive(Debug, Clone)]
 pub struct Policy {
     expiration: Timestamp,
-    conditions: Vec<Value>,
-    #[serde(skip_serializing)]
-    post_fields: BTreeMap<String, String>,
+    defaults: Vec<(&'static str, String)>,
+    bucket: Option<String>,
+    key: Option<Match>,
+    content_type: Option<Match>,
+    content_length_range: Option<(usize, usize)>,
+    custom: Vec<Value>,
+}
+
+impl Serialize for Policy {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("Policy", 2)?;
+        state.serialize_field("expiration", &self.expiration)?;
+        state.serialize_field("conditions", &self.conditions())?;
+        state.end()
+    }
 }
 
 impl Policy {
     /// Returns the form fields to send with the upload, including the signed policy
     pub fn get_post_fields(&self, signing_context: &SigningContext) -> BTreeMap<String, String> {
-        let mut post_fields = self.post_fields.clone();
+        let mut post_fields: BTreeMap<String, String> = self
+            .defaults
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone()))
+            .collect();
+
+        match &self.key {
+            Some(Match::Exact(key)) => {
+                post_fields.insert("key".to_string(), key.clone());
+            }
+            Some(Match::StartsWith(prefix)) => {
+                post_fields.insert("key".to_string(), format!("{prefix}${{filename}}"));
+            }
+            None => {}
+        }
+
+        // A prefix match leaves the actual Content-Type for the client to supply
+        if let Some(Match::Exact(content_type)) = &self.content_type {
+            post_fields.insert("Content-Type".to_string(), content_type.clone());
+        }
 
         let signed_policy = self.sign(&derive_signing_key(signing_context));
-
         post_fields.insert("policy".to_string(), signed_policy.base64_encoding);
         post_fields.insert("x-amz-signature".to_string(), signed_policy.signature);
-        for (name, value) in Policy::get_default_fields(signing_context) {
-            post_fields.insert(name.to_string(), value);
-        }
 
         post_fields
     }
@@ -39,20 +90,46 @@ impl Policy {
         get_policy_signature(&policy, signing_key)
     }
 
+    /// Builds the policy's conditions array in a fixed order: the x-amz-* defaults,
+    /// bucket, key, content type, content length range, then any custom conditions
+    fn conditions(&self) -> Vec<Value> {
+        let mut conditions: Vec<Value> = self
+            .defaults
+            .iter()
+            .map(|(name, value)| json!({ *name: value }))
+            .collect();
+
+        conditions.extend(
+            self.bucket
+                .as_ref()
+                .map(|bucket| json!({ "bucket": bucket })),
+        );
+        conditions.extend(self.key.as_ref().map(|m| m.to_condition("key")));
+        conditions.extend(
+            self.content_type
+                .as_ref()
+                .map(|m| m.to_condition("content-type")),
+        );
+        conditions.extend(
+            self.content_length_range
+                .map(|(lower, upper)| json!(["content-length-range", lower, upper])),
+        );
+        conditions.extend(self.custom.iter().cloned());
+
+        conditions
+    }
+
     /// The x-amz-* fields shared by the policy conditions and the form fields
-    fn get_default_fields(signing_context: &SigningContext) -> [(&'static str, String); 3] {
-        [
+    fn get_default_fields(signing_context: &SigningContext) -> Vec<(&'static str, String)> {
+        let mut fields = vec![
             ("x-amz-credential", signing_context.get_credential()),
             ("x-amz-algorithm", AWS4_HMAC_SHA256.to_string()),
             ("x-amz-date", signing_context.get_x_amz_date()),
-        ]
-    }
-
-    fn get_default_conditions(signing_context: &SigningContext) -> Vec<Value> {
-        Policy::get_default_fields(signing_context)
-            .into_iter()
-            .map(|(name, value)| json!({ name: value }))
-            .collect()
+        ];
+        if let Some(token) = &signing_context.session_token {
+            fields.push(("x-amz-security-token", token.clone()));
+        }
+        fields
     }
 
     /// Create a policy which expire in X minutes
@@ -77,56 +154,63 @@ impl Policy {
     ) -> Self {
         Self {
             expiration,
-            conditions: Policy::get_default_conditions(signing_context),
-            post_fields: BTreeMap::new(),
+            defaults: Policy::get_default_fields(signing_context),
+            bucket: None,
+            key: None,
+            content_type: None,
+            content_length_range: None,
+            custom: Vec::new(),
         }
     }
 
-    /// Specifies the exact bucket the user must upload to
+    /// Specifies the exact bucket the user must upload to. Replaces any previous bucket.
     pub fn bucket(mut self, bucket: &str) -> Self {
-        self.conditions.push(json!({"bucket": bucket}));
+        self.bucket = Some(bucket.to_string());
         self
     }
 
-    /// Specifies the content length range in bytes e.g. 1048576 for a mb
+    /// Specifies the content length range in bytes e.g. 1048576 for a mb. Replaces any
+    /// previous range.
     pub fn content_length_range(mut self, lower: usize, upper: usize) -> Self {
-        self.conditions
-            .push(json!(["content-length-range", lower, upper]));
+        self.content_length_range = Some((lower, upper));
         self
     }
 
-    /// Specifies the exact content type the user must upload with
+    /// Specifies the exact content type the user must upload with. The matching
+    /// `Content-Type` form field is set as well. Replaces any previous content type condition.
     pub fn content_type(mut self, content_type: &str) -> Self {
-        self.conditions.push(json!({"content-type": content_type}));
+        self.content_type = Some(Match::Exact(content_type.to_string()));
         self
     }
 
-    /// Specifies the prefix the content type must start with (e.g. "image/")
+    /// Specifies the prefix the content type must start with (e.g. "image/"). The client
+    /// must send its own `Content-Type` form field matching this prefix. Replaces any
+    /// previous content type condition.
     pub fn starts_with_content_type(mut self, content_type: &str) -> Self {
-        self.conditions
-            .push(json!(["starts-with", "$content-type", content_type]));
+        self.content_type = Some(Match::StartsWith(content_type.to_string()));
         self
     }
 
-    /// Specifies the exact key the user must upload with
+    /// Specifies the exact key the user must upload with. Replaces any previous key condition.
     pub fn key(mut self, key: &str) -> Self {
-        self.conditions.push(json!({"key": key}));
-        self.post_fields
-            .insert("key".to_string(), format!("{key}${{filename}}"));
+        self.key = Some(Match::Exact(key.to_string()));
         self
     }
 
-    /// Specifies the prefix the key must start with (e.g. "user/user1/")
+    /// Specifies the prefix the key must start with (e.g. "user/user1/"). The `key` form
+    /// field is set to `{prefix}${filename}`. Replaces any previous key condition.
     pub fn starts_with_key(mut self, key: &str) -> Self {
-        self.conditions.push(json!(["starts-with", "$key", key]));
-        self.post_fields
-            .insert("key".to_string(), format!("{key}${{filename}}"));
+        self.key = Some(Match::StartsWith(key.to_string()));
         self
     }
 
-    /// Adds a custom condition to the policy
+    /// Adds a custom condition to the policy.
+    ///
+    /// Use this for conditions without a dedicated method (e.g. `acl`, `x-amz-meta-*`).
+    /// Conditions on bucket, key, content type or content length range should use their
+    /// dedicated methods; adding them here as well can produce a policy no upload satisfies.
     pub fn condition(mut self, condition: Value) -> Self {
-        self.conditions.push(condition);
+        self.custom.push(condition);
         self
     }
 }

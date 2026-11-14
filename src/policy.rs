@@ -216,4 +216,13 @@ impl Policy {
         self.custom.push(condition);
         self
     }
+
+    /// A convenience method for getting the upload url which can then be provided alongside the
+    /// form fields. Will return None if no bucket has been set
+    pub fn get_s3_upload_url(&self, signing_context: &SigningContext) -> Option<String> {
+        let region = signing_context.region.to_string();
+        let bucket_name = self.bucket.as_ref()?;
+
+        Some(format!("https://{bucket_name}.s3.{region}.amazonaws.com/"))
+    }
 }
